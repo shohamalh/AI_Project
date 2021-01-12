@@ -90,12 +90,12 @@ class ID3:
         :rtype: classifierTree, a classifying tree based on the features and values.
         """
         samples = values.shape[0]
-        M_samples = (values.loc[values['diagnosis'] == 'M']).shape[0]
+        m_samples = (values.loc[values['diagnosis'] == 'M']).shape[0]
         default = 'B' if (values.loc[values['diagnosis'] == 'B']).shape[0] >= values.shape[0] / 2 else 'M'
 
         if (values.loc[values['diagnosis'] == default]).shape[0] == samples \
                 or features.shape[0] == 0 \
-                or M_samples < min_samples:
+                or m_samples < min_samples:
             node = Node(None, None, None)
             node.set_classification(default)
             return node
@@ -134,8 +134,8 @@ class ID3:
 
     # adding loss function here for easier implementation of CostSensitiveID3
     def loss(self, test_set=None, classifier=None):
-        count_FP = 0
-        count_FN = 0
+        count_fp = 0
+        count_fn = 0
         if test_set is None:
             test_set = self.test_samples
         if classifier is None:
@@ -152,34 +152,35 @@ class ID3:
                     node = node.children[1]
             if not node.classification == row['diagnosis']:
                 if row['diagnosis'] == 'B':
-                    count_FP += 1
+                    count_fp += 1
                 else:
-                    count_FN += 1
+                    count_fn += 1
 
         rows = self.test_samples.shape[0]
-        return (count_FP * 0.1 + count_FN) / rows
+        return (count_fp * 0.1 + count_fn) / rows
 
     def experiment(self, test_or_loss='test'):
         kf = KFold(n_splits=5, shuffle=True, random_state=208501684)
-        M = np.array((1, 2, 3, 5, 8, 13, 21))
+        m_values = np.array((1, 2, 3, 5, 8, 13, 21))
         test_acc = []
-        for min in M:
+        for val in m_values:
             cum_acc = 0
             for fold_id, (train_index, test_index) in enumerate(kf.split(self.train_samples)):
+                accuracy = 0
                 train_set = self.train_samples.loc[train_index]
                 test_set = self.train_samples.loc[test_index]
-                id3_tree = self.get_classifier_tree(self.train_samples.keys()[1:], train_set, min_samples=min)
+                id3_tree = self.get_classifier_tree(self.train_samples.keys()[1:], train_set, min_samples=val)
                 if test_or_loss == 'test':
                     accuracy = self.test(test_set=test_set, classifier=id3_tree)
                 elif test_or_loss == 'loss':
                     accuracy = self.loss(test_set=test_set, classifier=id3_tree)
-                print(f"M = {min}, Fold No.: {fold_id} -> Accuracy: {accuracy}")
+                print(f"M = {val}, Fold No.: {fold_id} -> Accuracy: {accuracy}")
                 cum_acc += accuracy
             avg_acc_per_m = cum_acc / 5
             print(f"ended {min} M value. Avg accuracy is: {avg_acc_per_m}")
             test_acc += [avg_acc_per_m]
 
-        plt.scatter(M, test_acc)
+        plt.scatter(m_values, test_acc)
         plt.show()
 
 

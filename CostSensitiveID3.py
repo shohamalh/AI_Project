@@ -2,7 +2,7 @@ from ID3 import ID3
 from time import time
 
 
-class cost_sensitive_ID3(ID3):
+class CostSensitiveID3(ID3):
     def __init__(self):
         ID3.__init__(self)
 
@@ -11,7 +11,7 @@ class cost_sensitive_ID3(ID3):
 
 
 if __name__ == '__main__':
-    id3 = cost_sensitive_ID3()
+    id3 = CostSensitiveID3()
     # id3.experiment()
     t = time()
     id3.train()
