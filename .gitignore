@@ -128,3 +128,4 @@ dmypy.json
 *.iml
 .idea/.name
 *.xml
+/~$dry.docx
