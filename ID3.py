@@ -6,12 +6,12 @@ import numpy as np
 from time import time
 
 
-class Node:
+class Tree:
     """
     Contains the information of the node and another nodes of the Decision Tree.
     """
 
-    def __init__(self, feature, threshold, children):  # TODO: change names.
+    def __init__(self, feature, threshold, children):
         self.feature = feature  # The feature to split by
         self.threshold = threshold
         self.children = children  # Decision tree branches.
@@ -23,8 +23,8 @@ class Node:
 
 class ID3:
     def __init__(self):
-        self.train_samples = pd.read_csv("train.csv")
-        self.test_samples = pd.read_csv("test.csv")
+        self.train_samples = pd.read_csv("train.csv")  # for fit
+        self.test_samples = pd.read_csv("test.csv")  # for predict
         self.features_names = self.train_samples.keys()[1:]
         self.classifier = None
 
@@ -91,27 +91,27 @@ class ID3:
         """
         samples = values.shape[0]
         m_samples = (values.loc[values['diagnosis'] == 'M']).shape[0]
-        default = 'B' if (values.loc[values['diagnosis'] == 'B']).shape[0] >= values.shape[0] / 2 else 'M'
+        default = 'B' if (values.loc[values['diagnosis'] == 'B']).shape[0] > values.shape[0] / 2 else 'M'
 
         if (values.loc[values['diagnosis'] == default]).shape[0] == samples \
                 or features.shape[0] == 0 \
-                or m_samples < min_samples:
-            node = Node(None, None, None)
+                or m_samples <= min_samples:
+            node = Tree(None, None, None)
             node.set_classification(default)
             return node
 
         best_feature, threshold = ID3.max_feature(features, values)
-        left = values.loc[values[best_feature] < threshold]
-        right = values.loc[values[best_feature] >= threshold]
+        left = values.loc[values[best_feature] <= threshold]
+        right = values.loc[values[best_feature] > threshold]
         children = (ID3.get_classifier_tree(features, left, min_samples),
                     ID3.get_classifier_tree(features, right, min_samples))
-        return Node(best_feature, threshold, children)
+        return Tree(best_feature, threshold, children)
 
-    def train(self, min_samples=1):
-        self.classifier = self.get_classifier_tree(self.train_samples.keys()[1:], self.train_samples, min_samples)
-        return self.classifier
+    def fit(self, min_samples=1):
+        self.classifier = self.get_classifier_tree(self.features_names, self.train_samples, min_samples)
+        # return self.classifier
 
-    def test(self, test_set=None, classifier=None):
+    def predict(self, test_set=None, classifier=None):
         count_success = 0
         if test_set is None:
             test_set = self.test_samples
@@ -185,8 +185,9 @@ class ID3:
 
 
 if __name__ == '__main__':
+    print("running id3")
     id3_alg = ID3()
     t = time()
-    id3_alg.train()
+    id3_alg.fit()
     # id3_alg.experiment()
-    print('the accuracy on the train group is:', id3_alg.test())
+    print('the accuracy on the test group is:', id3_alg.predict())

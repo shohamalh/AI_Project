@@ -1,68 +1,64 @@
-import heapq
-import pandas as pd
-from ID3 import ID3
-from scipy import spatial
+from ID3 import ID3, Tree
+import math
 
 
-class KNN_decision_tree:
-    def __init__(self, train, test, fromFile=True):
-        if fromFile:
-            predictors, targets = KNN_decision_tree.get_data(train)
-            self.predictors_data, self.predictors_targets = KNN_decision_tree.get_data(test)
-            self._train_min = predictors.min().to_numpy()
-            self._train_max = predictors.max().to_numpy()
-            self._final_train = (predictors - predictors.min()) / (predictors.max() - predictors.min())
-            self._final_train = self._final_train.values
-        else:
-            predictors = train[train.columns.values[1:]]
-            targets = train[train.columns.values[0]]
-            predictors = predictors.apply(pd.to_numeric, errors='coerce')
-            targets = targets.apply(pd.to_numeric, errors='coerce')
-            self.predictors_data = test[test.columns.values[1:]]
-            self.predictors_targets = test[test.columns.values[0]]
-            self.predictors_data = self.predictors_data.apply(pd.to_numeric, errors='coerce')
-            self.predictors_targets = self.predictors_targets.apply(pd.to_numeric, errors='coerce')
-            self._final_train = predictors.values
-            self._train_min = None  # do not use
-            self._train_max = None  # do not use
-
-        self._train_targets = targets.values
+class KNNDecisionTree(ID3):
+    # predict = on test group.
+    # fit = study
+    def __init__(self, N, K):
+        ID3.__init__(self)  # initializing train and test CSVs.
+        self.size_of_train_group = self.train_samples.shape[0] - 1  # number of rows in train.csv - 1 (for header)
+        self.N = N  # number of decision trees for fit.
+        self.K = K  # number of sub-trees to choose.
+        self.probability = 0.4  # will be determined later using experiments.
+        self.classifiers = [None] * self.N  # N decision trees for 'fit'
+        self.centroids = [0] * self.N
+        """
+        each one of the N trees will have a size-31 vector of the average features,
+        where each cell will be the average of the n*p samples chosen.
+        """
 
     def predict(self, k):
-        to_return = []
-        for predictors, index in zip(self.predictors_data.values, range(self.predictors_data.shape[0])):
-            prediction = self._predict_single(predictors, k)
-            good_one = 1 if prediction == self.predictors_targets.iloc[[index]].values[0] else 0
-            to_return.append((prediction, good_one))
-        return to_return
-
-    def fit(self, X, Y):
-        raise NotImplementedError
-
-    def _predict_single(self, features, k):
-        if self._train_min is not None:
-            features = (features - self._train_min) / (self._train_max - self._train_min)
-        distances = [(spatial.distance.euclidean(features, self_train), self_train_target)
-                     for self_train, self_train_target in zip(self._final_train, self._train_targets)]
-        nearest = heapq.nsmallest(k, distances, key=lambda x: x[0])
-        nearest_targets = [e[1] for e in nearest]
-        target = max(set(nearest_targets), key=nearest_targets.count)
-        return target
+        return
 
     @staticmethod
-    def get_data(csv):
-        data = pd.read_csv(f'{csv}.csv')
-        features = data[data.columns.values[1:]]
-        results = data[data.columns.values[0]]
-        features = features.apply(pd.to_numeric, errors='coerce')
-        results = results.apply(pd.to_numeric, errors='coerce')
+    def get_classifier_tree(features, values, min_samples=1):
+        samples = values.shape[0]
+        m_samples = (values.loc[values['diagnosis'] == 'M']).shape[0]
+        default = 'B' if (values.loc[values['diagnosis'] == 'B']).shape[0] > values.shape[0] / 2 else 'M'
+        if (values.loc[values['diagnosis'] == default]).shape[0] == samples \
+                or features.shape[0] == 0 \
+                or m_samples <= min_samples:
+            node = Tree(None, None, None)
+            node.set_classification(default)
+            return node
 
-        return features, results
+        best_feature, threshold = ID3.max_feature(features, values)
+        left = values.loc[values[best_feature] <= threshold]
+        right = values.loc[values[best_feature] > threshold]
+        children = (ID3.get_classifier_tree(features, left, min_samples),
+                    ID3.get_classifier_tree(features, right, min_samples))
+        return Tree(best_feature, threshold, children)
+
+    def fit(self, min_samples=1):  # wrapper function
+        # we study N ID3 decision trees
+        samples_to_choose = math.ceil(self.probability * self.size_of_train_group)
+        for i in range(self.N):
+            # first we randomly choose p*n samples from the train-set.
+            ith_train_samples = self.train_samples.sample(n=samples_to_choose)
+            self.classifiers[i] = self.get_classifier_tree(self.features_names, ith_train_samples, min_samples)
+        for i in range(self.N):
+            # todo: calc centroids
+            # we take the average per each feature of the N trees
+            centroid_vec = [0] * samples_to_choose
+            self.centroids[i] =
+
+    # def fit(self, X, Y):
+    #   raise NotImplementedError
 
 
 if __name__ == '__main__':
-    knn = KNN_decision_tree('train', 'test')
-    test_predictors = KNN_decision_tree.get_data('test')[0]
-    predictions = knn.predict(9)
-    correct = list(filter(lambda x: x[1] == 1, predictions))
-    print(str(len(correct) / test_predictors.shape[0] * 100))
+    # K =
+    # N =
+    knn = KNNDecisionTree(K=10, N=5)
+    knn.fit()
