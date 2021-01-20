@@ -3,7 +3,6 @@ from numpy import log2
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 import numpy as np
-from time import time
 
 
 class Tree:
@@ -82,27 +81,27 @@ class ID3:
         return best_feature, best_feature_threshold
 
     @staticmethod
-    def get_classifier_tree(features, values, min_samples=1):
+    def get_classifier_tree(features, samples, min_samples=1):
         """
         :param min_samples:
         :param features: the keys from the .csv (first row).
-        :param values: the keys' values from the .csv (from the second row and on).
-        :rtype: classifierTree, a classifying tree based on the features and values.
+        :param samples: the keys' samples from the .csv (from the second row and on).
+        :rtype: classifierTree, a classifying tree based on the features and samples.
         """
-        samples = values.shape[0]
-        m_samples = (values.loc[values['diagnosis'] == 'M']).shape[0]
-        default = 'B' if (values.loc[values['diagnosis'] == 'B']).shape[0] > values.shape[0] / 2 else 'M'
+        values = samples.shape[0]
+        m_samples = (samples.loc[samples['diagnosis'] == 'M']).shape[0]
+        default = 'B' if (samples.loc[samples['diagnosis'] == 'B']).shape[0] > samples.shape[0] / 2 else 'M'
 
-        if (values.loc[values['diagnosis'] == default]).shape[0] == samples \
+        if (samples.loc[samples['diagnosis'] == default]).shape[0] == values \
                 or features.shape[0] == 0 \
                 or m_samples <= min_samples:
             node = Tree(None, None, None)
             node.set_classification(default)
             return node
 
-        best_feature, threshold = ID3.max_feature(features, values)
-        left = values.loc[values[best_feature] <= threshold]
-        right = values.loc[values[best_feature] > threshold]
+        best_feature, threshold = ID3.max_feature(features, samples)
+        left = samples.loc[samples[best_feature] <= threshold]
+        right = samples.loc[samples[best_feature] > threshold]
         children = (ID3.get_classifier_tree(features, left, min_samples),
                     ID3.get_classifier_tree(features, right, min_samples))
         return Tree(best_feature, threshold, children)
@@ -187,7 +186,6 @@ class ID3:
 if __name__ == '__main__':
     print("running id3")
     id3_alg = ID3()
-    t = time()
     id3_alg.fit()
     # id3_alg.experiment()
     print('the accuracy on the test group is:', id3_alg.predict())
