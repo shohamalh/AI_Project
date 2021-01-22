@@ -1,47 +1,48 @@
-import pandas as pd
-import numpy as np
-from KNN import KNN
-from DT_epsilon import ID3_epsilon
+from KNNForest import *
 
 
-class KNN_epsilon(ID3_epsilon):
-    def __init__(self, train, test):
-        ID3_epsilon.__init__(self, train, test)
-        predictors_train, targets = KNN.get_data(train)
-        self.train = (predictors_train - predictors_train.min()) / (predictors_train.max() - predictors_train.min())
+class ImprovedKNNDecisionTree(KNNDecisionTree):
+    # predict = on test group.
+    # fit = study
+    def __init__(self, N, K, p):
+        KNNDecisionTree.__init__(self, N, K, p)  # initializing train and test CSVs.
 
-        self.train.insert(loc=0, column='diagnosis', value=targets.values)
-
-        predictors_test, targets = KNN.get_data(test)
-        self.test = (predictors_test - predictors_train.min()) / (predictors_train.max() - predictors_train.min())
-
-        self.test.insert(loc=0, column='diagnosis', value=targets.values)
-
-    def fit_epsilon_KNN(self):
-        v = np.std(self.train.values, axis=0, ddof=0)
-        epsilon = v * 0.1
-        keys = list(self.train.keys())
-        final_epsilon = pd.DataFrame()
-        for i in range(len(keys)):
-            final_epsilon[keys[i]] = [epsilon[i]]
-        final_epsilon = final_epsilon.apply(pd.to_numeric, errors='coerce')
-        correct = 0
-        for i in range(self.test.shape[0]):
-            self.examples_at_leafs = pd.DataFrame(columns=list(self.train.keys()))
-            self.DT_Classify_epsilon(self.test.iloc[[i]], self.tree, final_epsilon)
-            if self.examples_at_leafs.shape[0] < 9:
-                classification = 1 if (self.examples_at_leafs.loc[self.examples_at_leafs['diagnosis'] == 1]).shape[
-                                          0] >= 0.5 * self.examples_at_leafs.shape[0] else 0
-            else:
-                knn = KNN(self.examples_at_leafs, self.test.iloc[[i]], fromFile=False)
-                classification = knn.predict(9)[0][0]
-
-            if classification == self.test.iloc[[i]]['diagnosis'].values[0]:
-                correct += 1
-        return correct / self.test.shape[0]
+    def normalize_data(self):
+        """
+        We normalize using Z-SCORE = (X - μ) / σ
+        we calculate the estimator of σ, since it's unbiased (Bessel's correction. Thanks to Introduction to Statistics).
+        NOTE: SCIKIT stated that a BIASED estimator is NOT LIKELY to affect the outcome, but I will do so anyway.
+        :return: normalized data
+        """
+        tmp_mean = self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].mean()
+        tmp_sd = self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].std()
+        # normalizing train samples by MinMax
+        self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]] = \
+            (self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]] - tmp_mean) / tmp_sd
+        # normalizing test samples by MinMax, where min and max are from train samples.
+        self.test_features_values = (self.test_features_values - tmp_mean) / tmp_sd
 
 
 if __name__ == '__main__':
-    instance = KNN_epsilon('train', 'test')
-    instance.buildTree(9)
-    print(str(instance.fit_epsilon_KNN() * 100))
+    # K =
+    # N =
+    best_p = 0.3
+    highest_acc = 0
+    highest_avg_acc = 0
+    for i in range(35):
+        avg_acc = 0
+        p = 0.3 + i * 0.02
+        improved_knn = ImprovedKNNDecisionTree(N=10, K=5, p=p)
+        for j in range(10):
+            improved_knn.fit()
+            res_predictions = improved_knn.predict()
+            accuracy = improved_knn.accuracy(res_predictions)
+            print(j + 1, 'th iteration accuracy:', accuracy, 'probability ', p)
+            if accuracy >= highest_acc:
+                highest_acc = accuracy
+            avg_acc += accuracy
+        if avg_acc >= highest_avg_acc:
+            highest_avg_acc = avg_acc
+            best_p = p
+        print('average accuracy of p =', p, ' is', avg_acc)
+    print('highest accuracy:', accuracy, ' p:', best_p)

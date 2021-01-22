@@ -25,7 +25,7 @@ class ID3:
         self.train_samples = pd.read_csv("train.csv")  # for fit
         self.test_samples = pd.read_csv("test.csv")  # for predict
         self.features_names = self.train_samples.keys()[1:]
-        self.classifier = None
+        self.tree = None
 
     @staticmethod
     def get_entropy(positive_samples: int, negative_samples: int) -> float:
@@ -107,15 +107,14 @@ class ID3:
         return Tree(best_feature, threshold, children)
 
     def fit(self, min_samples=1):
-        self.classifier = self.get_classifier_tree(self.features_names, self.train_samples, min_samples)
-        # return self.classifier
+        self.tree = self.get_classifier_tree(self.features_names, self.train_samples, min_samples)
 
     def predict(self, test_set=None, classifier=None):
-        count_success = 0
+        correct_predictions = 0
         if test_set is None:
             test_set = self.test_samples
         if classifier is None:
-            base_node = self.classifier
+            base_node = self.tree
         else:
             base_node = classifier
 
@@ -127,9 +126,8 @@ class ID3:
                 else:
                     node = node.children[1]
             if node.classification == row['diagnosis']:
-                count_success += 1
-        rows = self.test_samples.shape[0]
-        return count_success / rows
+                correct_predictions += 1
+        return correct_predictions / self.test_samples.shape[0]
 
     # adding loss function here for easier implementation of CostSensitiveID3
     def loss(self, test_set=None, classifier=None):
@@ -138,7 +136,7 @@ class ID3:
         if test_set is None:
             test_set = self.test_samples
         if classifier is None:
-            base_node = self.classifier
+            base_node = self.tree
         else:
             base_node = classifier
 
@@ -170,7 +168,7 @@ class ID3:
                 test_set = self.train_samples.loc[test_index]
                 id3_tree = self.get_classifier_tree(self.train_samples.keys()[1:], train_set, min_samples=val)
                 if test_or_loss == 'test':
-                    accuracy = self.test(test_set=test_set, classifier=id3_tree)
+                    accuracy = self.predict(test_set=test_set, classifier=id3_tree)
                 elif test_or_loss == 'loss':
                     accuracy = self.loss(test_set=test_set, classifier=id3_tree)
                 print(f"M = {val}, Fold No.: {fold_id} -> Accuracy: {accuracy}")
@@ -186,6 +184,7 @@ class ID3:
 if __name__ == '__main__':
     print("running id3")
     id3_alg = ID3()
+
     id3_alg.fit()
     # id3_alg.experiment()
-    print('the accuracy on the test group is:', id3_alg.predict())
+    print('accuracy on test is: ', id3_alg.predict())
