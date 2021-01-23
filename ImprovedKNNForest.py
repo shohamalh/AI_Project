@@ -4,45 +4,56 @@ from KNNForest import *
 class ImprovedKNNDecisionTree(KNNDecisionTree):
     # predict = on test group.
     # fit = study
-    def __init__(self, N, K, p):
-        KNNDecisionTree.__init__(self, N, K, p)  # initializing train and test CSVs.
+    def __init__(self, N, K, P=0.35):
+        KNNDecisionTree.__init__(self, N, K, P)  # initializing train and test CSVs.
 
-    def normalize_data(self):
+    def _predict_single(self, sample_to_classify):
         """
-        We normalize using Z-SCORE = (X - μ) / σ
-        we calculate the estimator of σ, since it's unbiased (Bessel's correction. Thanks to Introduction to Statistics).
-        NOTE: SCIKIT stated that a BIASED estimator is NOT LIKELY to affect the outcome, but I will do so anyway.
-        :return: normalized data
+        This method classifies a single sample according to the K-nearest centroids.
+        :param sample_to_classify: the samples to classify
+        :return: a prediction of 'M' or 'B'.
         """
-        tmp_mean = self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].mean()
-        tmp_sd = self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].std()
-        # normalizing train samples by MinMax
-        self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]] = \
-            (self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]] - tmp_mean) / tmp_sd
-        # normalizing test samples by MinMax, where min and max are from train samples.
-        self.test_features_values = (self.test_features_values - tmp_mean) / tmp_sd
+        distances = [(spatial.distance.correlation(sample_to_classify, centroid), idx)  # (distance, index) # MANHATTAN
+                     for idx, centroid in enumerate(self.centroids[0])]
+        # distances is an array of the euclidean distances from the centroids
+        k_nearest = sorted(distances)[:self.K]
+        k_trees_diagnosis = []
+        for _, ind in k_nearest:
+            k_trees_diagnosis.append(KNNDecisionTree._classify(sample_to_classify, self.classifiers[ind]))
+        prediction = max(k_trees_diagnosis, key=k_trees_diagnosis.count)  # we classify according to what we have more.
+        return prediction
 
 
 if __name__ == '__main__':
-    # K =
-    # N =
+    """
     best_p = 0.3
     highest_acc = 0
     highest_avg_acc = 0
-    for i in range(35):
+    for i in range(9):
         avg_acc = 0
-        p = 0.3 + i * 0.02
-        improved_knn = ImprovedKNNDecisionTree(N=10, K=5, p=p)
+        p = 0.3 + i * 0.05
+        knn_tree = KNNDecisionTree(N=10, K=8, P=p)
         for j in range(10):
-            improved_knn.fit()
-            res_predictions = improved_knn.predict()
-            accuracy = improved_knn.accuracy(res_predictions)
+            knn_tree.fit()
+            res_predictions = knn_tree.predict()
+            accuracy = knn_tree.accuracy(res_predictions)
             print(j + 1, 'th iteration accuracy:', accuracy, 'probability ', p)
             if accuracy >= highest_acc:
                 highest_acc = accuracy
             avg_acc += accuracy
+        avg_acc = avg_acc / 10
         if avg_acc >= highest_avg_acc:
             highest_avg_acc = avg_acc
             best_p = p
         print('average accuracy of p =', p, ' is', avg_acc)
-    print('highest accuracy:', accuracy, ' p:', best_p)
+    print('highest average accuracy:', highest_avg_acc, ' p:', best_p)
+    """
+    improved_knn = ImprovedKNNDecisionTree(N=10, K=7)
+    avg_acc = 0
+    for i in range(10):
+        improved_knn.fit()
+        res_predictions = improved_knn.predict()
+        accuracy = improved_knn.accuracy(res_predictions)
+        print(i + 1, 'th iteration accuracy:', accuracy)
+        avg_acc += accuracy
+    print('avg acc', avg_acc / 10)

@@ -6,7 +6,7 @@ class CostSensitiveID3(ID3):
         ID3.__init__(self)
 
     @staticmethod
-    def get_classifier_tree(features, samples, min_samples=1):
+    def _get_classifier_tree(features, samples, min_samples=1):
         values = samples.shape[0]
         m_samples = (samples.loc[samples['diagnosis'] == 'M']).shape[0]
         b_samples = (samples.loc[samples['diagnosis'] == 'B']).shape[0]
@@ -21,11 +21,11 @@ class CostSensitiveID3(ID3):
             node.set_classification('M')
             return node
 
-        best_feature, threshold = CostSensitiveID3.max_feature(features, samples)
+        best_feature, threshold = CostSensitiveID3._max_feature(features, samples)
         left = samples.loc[samples[best_feature] <= threshold]
         right = samples.loc[samples[best_feature] > threshold]
-        children = (CostSensitiveID3.get_classifier_tree(features, left, min_samples),
-                    CostSensitiveID3.get_classifier_tree(features, right, min_samples))
+        children = (CostSensitiveID3._get_classifier_tree(features, left, min_samples),
+                    CostSensitiveID3._get_classifier_tree(features, right, min_samples))
         return Tree(best_feature, threshold, children)
 
 

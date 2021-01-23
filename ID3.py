@@ -24,11 +24,12 @@ class ID3:
     def __init__(self):
         self.train_samples = pd.read_csv("train.csv")  # for fit
         self.test_samples = pd.read_csv("test.csv")  # for predict
+        self.test_target_diagnosis = self.test_samples[self.test_samples.columns.values[0]]
         self.features_names = self.train_samples.keys()[1:]
         self.tree = None
 
     @staticmethod
-    def get_entropy(positive_samples: int, negative_samples: int) -> float:
+    def _get_entropy(positive_samples: int, negative_samples: int) -> float:
         """
         :param positive_samples: the number of positive samples
         :param negative_samples: the number of negative samples
@@ -44,7 +45,7 @@ class ID3:
         return -pr_pos * log2(pr_pos) - pr_neg * log2(pr_neg)
 
     @staticmethod
-    def max_feature(features, values):
+    def _max_feature(features, values):
         """
         Finds the feature that maximizes the information-gain, and the best threshold for that feature.
         :param features: list, List containing the feature IDs (from the .csv).
@@ -52,7 +53,7 @@ class ID3:
         :returns: string and int, feature and threshold.
         """
         positive, negative = values.loc[values['diagnosis'] == 'B'], values.loc[values['diagnosis'] == 'M']
-        entropy = ID3.get_entropy(positive.shape[0], negative.shape[0])
+        entropy = ID3._get_entropy(positive.shape[0], negative.shape[0])
         best_feature = None
         best_info_gain = float('-inf')
         best_feature_threshold = 0
@@ -66,14 +67,14 @@ class ID3:
                 neg_lower = (negative.loc[negative[feature] < threshold]).shape[0]
                 pos_higher = positive.shape[0] - pos_lower
                 neg_higher = negative.shape[0] - neg_lower
-                entropy_low = ID3.get_entropy(pos_lower, neg_lower)
-                entropy_high = ID3.get_entropy(pos_higher, neg_higher)
+                entropy_low = ID3._get_entropy(pos_lower, neg_lower)
+                entropy_high = ID3._get_entropy(pos_higher, neg_higher)
 
                 info_gain_feature_lower = (pos_lower + neg_lower) / size * entropy_low
                 info_gain_feature_higher = (pos_higher + neg_higher) / size * entropy_high
 
                 info_gain = entropy - info_gain_feature_lower - info_gain_feature_higher
-                if best_info_gain < info_gain:
+                if best_info_gain <= info_gain:
                     best_info_gain = info_gain
                     best_feature = feature
                     best_feature_threshold = threshold
@@ -81,7 +82,7 @@ class ID3:
         return best_feature, best_feature_threshold
 
     @staticmethod
-    def get_classifier_tree(features, samples, min_samples=1):
+    def _get_classifier_tree(features, samples, min_samples=1):
         """
         :param min_samples:
         :param features: the keys from the .csv (first row).
@@ -90,46 +91,54 @@ class ID3:
         """
         values = samples.shape[0]
         m_samples = (samples.loc[samples['diagnosis'] == 'M']).shape[0]
-        default = 'B' if (samples.loc[samples['diagnosis'] == 'B']).shape[0] > samples.shape[0] / 2 else 'M'
+        default = 'B' if (samples.loc[samples['diagnosis'] == 'B']).shape[0] >= samples.shape[0] / 2 else 'M'
 
         if (samples.loc[samples['diagnosis'] == default]).shape[0] == values \
                 or features.shape[0] == 0 \
-                or m_samples <= min_samples:
+                or m_samples < min_samples:
             node = Tree(None, None, None)
             node.set_classification(default)
             return node
 
-        best_feature, threshold = ID3.max_feature(features, samples)
-        left = samples.loc[samples[best_feature] <= threshold]
-        right = samples.loc[samples[best_feature] > threshold]
-        children = (ID3.get_classifier_tree(features, left, min_samples),
-                    ID3.get_classifier_tree(features, right, min_samples))
+        best_feature, threshold = ID3._max_feature(features, samples)
+        left = samples.loc[samples[best_feature] < threshold]
+        right = samples.loc[samples[best_feature] >= threshold]
+        children = (ID3._get_classifier_tree(features, left, min_samples),
+                    ID3._get_classifier_tree(features, right, min_samples))
         return Tree(best_feature, threshold, children)
 
+    @staticmethod
+    def _classify(sample_to_classify, classifier: Tree):
+        """
+        this method returns the classification of the tree.
+        :param sample_to_classify:
+        :param classifier:
+        :return:
+        """
+        while classifier.children is not None:
+            if sample_to_classify[classifier.feature] < classifier.threshold:
+                classifier = classifier.children[0]
+            else:
+                classifier = classifier.children[1]
+        return classifier.classification
+
     def fit(self, min_samples=1):
-        self.tree = self.get_classifier_tree(self.features_names, self.train_samples, min_samples)
+        self.tree = self._get_classifier_tree(self.features_names, self.train_samples, min_samples)
 
     def predict(self, test_set=None, classifier=None):
-        correct_predictions = 0
+        predicting_tree = None
         if test_set is None:
             test_set = self.test_samples
         if classifier is None:
-            base_node = self.tree
+            predicting_tree = self.tree
         else:
-            base_node = classifier
+            predicting_tree = classifier
 
-        for row_num, row in test_set.iterrows():
-            node = base_node
-            while node.children is not None:
-                if row[node.feature] < node.threshold:
-                    node = node.children[0]
-                else:
-                    node = node.children[1]
-            if node.classification == row['diagnosis']:
-                correct_predictions += 1
-        return correct_predictions / self.test_samples.shape[0]
+        predictions = []
+        for _, predictors in test_set.iterrows():
+            predictions.append(self._classify(predictors, predicting_tree))
+        return predictions
 
-    # adding loss function here for easier implementation of CostSensitiveID3
     def loss(self, test_set=None, classifier=None):
         count_fp = 0
         count_fn = 0
@@ -156,6 +165,13 @@ class ID3:
         rows = self.test_samples.shape[0]
         return (count_fp * 0.1 + count_fn) / rows
 
+    def accuracy(self, predictions):
+        correct_predictions = 0
+        for i in range(len(predictions)):
+            if self.test_target_diagnosis[i] == predictions[i]:
+                correct_predictions += 1
+        return correct_predictions / len(predictions)
+
     def experiment(self, test_or_loss='test'):
         kf = KFold(n_splits=5, shuffle=True, random_state=208501684)
         m_values = np.array((1, 2, 3, 5, 8, 13, 21))
@@ -166,7 +182,7 @@ class ID3:
                 accuracy = 0
                 train_set = self.train_samples.loc[train_index]
                 test_set = self.train_samples.loc[test_index]
-                id3_tree = self.get_classifier_tree(self.train_samples.keys()[1:], train_set, min_samples=val)
+                id3_tree = self._get_classifier_tree(self.train_samples.keys()[1:], train_set, min_samples=val)
                 if test_or_loss == 'test':
                     accuracy = self.predict(test_set=test_set, classifier=id3_tree)
                 elif test_or_loss == 'loss':
@@ -182,9 +198,8 @@ class ID3:
 
 
 if __name__ == '__main__':
-    print("running id3")
     id3_alg = ID3()
-
     id3_alg.fit()
-    # id3_alg.experiment()
-    print('accuracy on test is: ', id3_alg.predict())
+    res_predictions = id3_alg.predict()
+    accuracy = id3_alg.accuracy(res_predictions)
+    print(accuracy)
