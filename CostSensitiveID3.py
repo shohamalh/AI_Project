@@ -29,6 +29,7 @@ class CostSensitiveID3(ID3):
 
 
 if __name__ == '__main__':
+    t = time()
     cost_sensitive_id3 = CostSensitiveID3()
     # cost_sensitive_id3.experiment(predict_or_loss='loss', print_graph=True)
     # exit(0)
@@ -36,3 +37,4 @@ if __name__ == '__main__':
     res_predictions = cost_sensitive_id3.predict()
     loss = cost_sensitive_id3.loss(res_predictions)
     print(loss)
+    print(time() - t)

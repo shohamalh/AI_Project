@@ -5,6 +5,7 @@ import pandas as pd
 from scipy import spatial
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
+from time import time
 
 
 class KNNDecisionTree(ID3):
@@ -44,6 +45,7 @@ class KNNDecisionTree(ID3):
         sorted_idxs_by_dist = dists.argsort(axis=1)
         for (_, sample), sorted_idxs_for_sample in zip(test_set.iterrows(), sorted_idxs_by_dist):
             # we iterate over each sample in the test, and classify it.
+            print(self)
             predictions.append(self._predict_single(sample, sorted_idxs_for_sample))  # list of classifications
         return predictions
 
@@ -62,8 +64,10 @@ class KNNDecisionTree(ID3):
 
 
 if __name__ == '__main__':
+    t = time()
     knn_tree = KNNDecisionTree(N=10, K=7)
     knn_tree.fit()
     res_predictions = knn_tree.predict()
     accuracy = knn_tree.accuracy(res_predictions)
     print(accuracy)
+    print(time() - t)

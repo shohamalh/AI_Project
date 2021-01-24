@@ -2,6 +2,8 @@ import pandas as pd
 from numpy import log2
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
+from time import time
+import numpy as np
 
 
 class Tree:
@@ -27,8 +29,8 @@ class ID3:
     @staticmethod
     def _get_entropy(b_samples: int, m_samples: int) -> float:
         """
-        :param b_samples: the number of positive samples
-        :param m_samples: the number of negative samples
+        :param b_samples: the number of b samples
+        :param m_samples: the number of m samples
         :return: entropy: float, Entropy.
         """
         total_samples = b_samples + m_samples  # total number of samples.
@@ -54,7 +56,17 @@ class ID3:
         return entropy - info_gain_feature_lower - info_gain_feature_higher
 
     @staticmethod
-    def _max_feature(features, values):
+    def entropy(probs):
+        def log2_(x):
+            z = np.zeros_like(x)
+            z[x != 0] = log2(x[x != 0])
+            return z
+        entropy = -probs * log2_(probs) - (1 - probs) * log2_(1 - probs)
+        entropy[probs == 0] = 0
+        return entropy
+
+    @staticmethod
+    def _max_feature(features, values: pd.DataFrame):
         """
         Finds the feature that maximizes the information-gain, and the best threshold for that feature.
         :param features: list, List containing the feature IDs (from the .csv).
@@ -62,23 +74,67 @@ class ID3:
         :returns: string and int, feature and threshold.
         """
         b_samples, m_samples = values.loc[values['diagnosis'] == 'B'], values.loc[values['diagnosis'] == 'M']
+        m_diagnosis_numbered = (values['diagnosis'] == "M").to_numpy() * 1.0
+        b_diagnosis_numbered = 1 - m_diagnosis_numbered
         entropy = ID3._get_entropy(b_samples.shape[0], m_samples.shape[0])
         best_feature = None
         best_info_gain = float('-inf')
         best_feature_threshold = 0
+        side_prob = (1 + np.arange(len(m_diagnosis_numbered))) / len(m_diagnosis_numbered)
         for feature in features:
-            sorted_values = sorted(list(values[feature]), key=lambda x: float(x))
-            thresholds = [(sorted_values[i] + sorted_values[i + 1]) / 2 for i in range(len(sorted_values) - 1)]
-            for threshold in thresholds:
-                info_gain = ID3._calculate_feature_ig(feature, threshold, b_samples, m_samples, entropy)
-                if best_info_gain <= info_gain:
-                    best_info_gain = max(best_info_gain, info_gain)
-                    best_feature = feature
-                    best_feature_threshold = threshold
+            f_values = values[feature].to_numpy()
+            f_idxs = f_values.argsort()
+            sorted_diagnosis = m_diagnosis_numbered[f_idxs][:, np.newaxis].repeat(len(m_diagnosis_numbered), 1)
+            left_num_of_m = np.triu(sorted_diagnosis).sum(axis=0)
+            right_num_of_m = np.tril(sorted_diagnosis).sum(axis=0)
+            sorted_diagnosis = b_diagnosis_numbered[f_idxs][:, np.newaxis].repeat(len(b_diagnosis_numbered), 1)
+            left_num_of_b = np.triu(sorted_diagnosis).sum(axis=0)
+            right_num_of_b = np.tril(sorted_diagnosis).sum(axis=0)
+            left_prob_of_m = left_num_of_m / (left_num_of_m + left_num_of_b)
+            right_prob_of_m = right_num_of_m / (right_num_of_m + right_num_of_b)
+            left_entropy = ID3.entropy(left_prob_of_m)
+            right_entropy = ID3.entropy(right_prob_of_m)
+            info_gain = entropy - left_entropy * side_prob - right_entropy * (1 - side_prob)
+            max_feat_info_gain = info_gain.max()
+            max_idx = info_gain.argmax()
+            threshold = f_values[f_idxs][max_idx:max_idx + 2].mean()
+            # print(info_gain)
+            if best_info_gain <= max_feat_info_gain:
+                best_info_gain = max_feat_info_gain
+                best_feature = feature
+                best_feature_threshold = threshold
 
         return best_feature, best_feature_threshold
 
     def _get_classifier_tree(self, samples, min_samples=1):
+        """
+        :param min_samples:
+        :param features: the keys from the .csv (first row).
+        :param samples: the keys' samples from the .csv (from the second row and on).
+        :rtype: classifierTree, a classifying tree based on the features and samples.
+        """
+        features = self.features_names
+        values = samples.shape[0]
+        m_samples = samples.loc[samples['diagnosis'] == 'M']
+        number_m_samples = m_samples.shape[0]
+        default = 'B' if (values - number_m_samples) >= (values / 2) else 'M'
+        n_default_samples = values - number_m_samples if default == "B" else number_m_samples
+
+        if n_default_samples == values \
+                or features.shape[0] == 0 \
+                or number_m_samples < min_samples:
+            node = Tree(None, None, None)
+            node.classification = default
+            return node
+
+        best_feature, threshold = self._max_feature(features, samples)
+        left = samples.loc[samples[best_feature] < threshold]
+        right = samples.loc[samples[best_feature] >= threshold]  # if == threshold, we go right
+        children = (self._get_classifier_tree(left, min_samples),
+                    self._get_classifier_tree(right, min_samples))
+        return Tree(best_feature, threshold, children)
+
+    def _get_classifier_tree2(self, samples, min_samples=1):
         """
         :param min_samples:
         :param features: the keys from the .csv (first row).
@@ -152,7 +208,7 @@ class ID3:
         else:
             targets = targets[targets.columns.values[0]]
         correct_predictions = 0
-        for i in range(len(predictions)):  # TODO: FIX TARGETS SENT
+        for i in range(len(predictions)):
             if (targets.to_numpy())[i] == predictions[i]:
                 correct_predictions += 1
         return correct_predictions / len(predictions)
@@ -197,10 +253,13 @@ class ID3:
 
 if __name__ == '__main__':
     id3_alg = ID3()
+    t = time()
     id3_alg.fit()
-    id3_alg.experiment(predict_or_loss='loss', print_graph=True)
-    exit(0)
+    # id3_alg.experiment(predict_or_loss='loss', print_graph=True)
+    # exit(0)
     res_predictions = id3_alg.predict()
-    accuracy = id3_alg.loss(res_predictions)
+    accuracy = id3_alg.accuracy(res_predictions)
     print(accuracy)
     # print(id3_alg.loss(res_predictions))
+    print(time() - t)
+
