@@ -149,8 +149,10 @@ class ID3:
     def accuracy(self, predictions, targets=None):
         if targets is None:
             targets = self.test_target_diagnosis
+        else:
+            targets = targets[targets.columns.values[0]]
         correct_predictions = 0
-        for i in range(len(predictions)):
+        for i in range(len(predictions)):  # TODO: FIX TARGETS SENT
             if (targets.to_numpy())[i] == predictions[i]:
                 correct_predictions += 1
         return correct_predictions / len(predictions)
@@ -163,7 +165,7 @@ class ID3:
         :return:
         """
         kf = KFold(n_splits=5, shuffle=True, random_state=208501684)
-        m_values = [1, 5, 10, 20, 50, 100]
+        m_values = [0, 1]
         test_acc = []
         for val in m_values:
             cum_acc = 0
@@ -195,8 +197,9 @@ class ID3:
 
 if __name__ == '__main__':
     id3_alg = ID3()
-    id3_alg.fit(1)
-    # id3_alg.experiment(predict_or_loss='predict', print_graph=True)
+    id3_alg.fit()
+    id3_alg.experiment(predict_or_loss='loss', print_graph=True)
+    exit(0)
     res_predictions = id3_alg.predict()
     accuracy = id3_alg.loss(res_predictions)
     print(accuracy)

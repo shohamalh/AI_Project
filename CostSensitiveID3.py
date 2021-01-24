@@ -12,10 +12,9 @@ class CostSensitiveID3(ID3):
         b_samples = (samples.loc[samples['diagnosis'] == 'B']).shape[0]
         default = 'B' if (samples.loc[samples['diagnosis'] == 'B']).shape[0] >= samples.shape[0] / 2 else 'M'
         if (samples.loc[samples['diagnosis'] == default]).shape[0] == values \
-                or features.shape[0] == 0 \
-                or m_samples < min_samples:
+                or features.shape[0] == 0 or (m_samples < min_samples and b_samples - m_samples <= 2):
             node = Tree(None, None, None)
-            if b_samples - m_samples <= 2:
+            if m_samples < min_samples and b_samples - m_samples <= 2:
                 node.classification = 'M'
             else:
                 node.classification = default
@@ -31,7 +30,9 @@ class CostSensitiveID3(ID3):
 
 if __name__ == '__main__':
     cost_sensitive_id3 = CostSensitiveID3()
-    cost_sensitive_id3.fit(10)
+    # cost_sensitive_id3.experiment(predict_or_loss='loss', print_graph=True)
+    # exit(0)
+    cost_sensitive_id3.fit(20)
     res_predictions = cost_sensitive_id3.predict()
     loss = cost_sensitive_id3.loss(res_predictions)
     print(loss)

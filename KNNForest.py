@@ -2,16 +2,15 @@ from ID3 import ID3, Tree
 import math
 import numpy as np
 import pandas as pd
-from scipy import spatial, stats
+from scipy import spatial
+from sklearn.model_selection import KFold
+import matplotlib.pyplot as plt
 
 
 class KNNDecisionTree(ID3):
     def __init__(self, N, K, P=0.35):
         ID3.__init__(self)  # initializing train and test CSVs.
-        # self.normalized_train_samples, _ = KNNDecisionTree.process_csv('train')
-        # self.normalized_train_samples = self.train_samples
-        self.test_features_values, self.test_target_diagnosis = KNNDecisionTree.process_csv('test')
-        # self.normalize_data()
+        self.test_features_values = self.test_samples[self.test_samples.columns.values[1:]]
         self.size_of_train_group = self.train_samples.shape[0] - 1  # number of rows in train.csv - 1 (for features)
         self.N = N  # number of decision trees for fit.
         self.K = K  # number of sub-trees to choose.
@@ -19,61 +18,47 @@ class KNNDecisionTree(ID3):
         self.classifiers = [None] * self.N  # N decision trees for 'fit'
         self.centroids = np.zeros(shape=(self.N, self.train_samples.shape[1] - 1), dtype=float),  # matrix of features.
 
-    """
-    def normalize_data(self):
-        tmp_min = self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].min()
-        tmp_max = self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].max()
-        # normalizing train samples by MinMax
-        self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]] -= \
-            self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].min()
-        self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]] /= \
-            self.normalized_train_samples[self.normalized_train_samples.columns.values[1:]].max()
-        # normalizing test samples by MinMax, where min and max are from train samples.
-        self.test_features_values -= tmp_min
-        self.test_features_values /= tmp_max
-    """
+    def _calculate_distances(self):
+        return spatial.distance.cdist(self.test_samples[self.test_samples.columns.values[1:]].to_numpy(),
+                                      self.centroids[0])
 
-    @staticmethod
-    def process_csv(csv):
-        data = pd.read_csv(f'{csv}.csv')
-        features = data[data.columns.values[1:]]
-        diagnosis = data[data.columns.values[0]]
-        features = features.apply(pd.to_numeric, errors='coerce')
-        # diagnosis = diagnosis.apply(pd.to_numeric, errors='coerce') # todo: perhaps need to change B, M to 0 and 1
-        return features, diagnosis
-
-    def _predict_single(self, sample_to_classify):
+    def _predict_single(self, sample_to_classify, sorted_centroid_idxs):
         """
         This method classifies a single sample according to the K-nearest centroids.
         :param sample_to_classify: the samples to classify
         :return: a prediction of 'M' or 'B'.
         """
-        distances = [(spatial.distance.euclidean(sample_to_classify, centroid), idx)  # (distance, index)
-                     for idx, centroid in enumerate(self.centroids[0])]
-        # distances is an array of the euclidean distances from the centroids
-        k_nearest = sorted(distances)[:self.K]
         k_trees_diagnosis = []
-        for _, ind in k_nearest:
+        for ind in sorted_centroid_idxs[:self.K]:
             k_trees_diagnosis.append(KNNDecisionTree._classify(sample_to_classify, self.classifiers[ind]))
-        prediction = max(k_trees_diagnosis, key=k_trees_diagnosis.count)  # we classify according to what we have more.
+        prediction = max(k_trees_diagnosis, key=k_trees_diagnosis.count)  # we classify according to the Majority Class.
         return prediction
 
-    def predict(self):
+    def predict(self, test_set=None):
         predictions = []
-        for index, predictors in self.test_features_values.iterrows():
+        if test_set is None:
+            test_set = self.test_features_values
+        else:
+            test_set = test_set[test_set.columns.values[1:]]
+        dists = self._calculate_distances()  # distances matrix
+        sorted_idxs_by_dist = dists.argsort(axis=1)
+        for (_, sample), sorted_idxs_for_sample in zip(test_set.iterrows(), sorted_idxs_by_dist):
             # we iterate over each sample in the test, and classify it.
-            predictions.append(self._predict_single(predictors))  # list of classifications
+            predictions.append(self._predict_single(sample, sorted_idxs_for_sample))  # list of classifications
         return predictions
 
-    def fit(self):
+    def fit(self, train_samples=None, size_of_train_group=0):
+        if train_samples is None:
+            train_samples = self.train_samples
+        if 0 == size_of_train_group:
+            size_of_train_group = self.size_of_train_group
         # we study N ID3 decision trees
-        samples_to_choose = math.ceil(self.probability * self.size_of_train_group)
+        samples_to_choose = math.ceil(self.probability * size_of_train_group)
         for tree in range(self.N):
             # first we randomly choose p*n samples from the train-set.
-            # ith_train_samples = self.train_samples.sample(n=samples_to_choose)
-            ith_train_samples = self.train_samples.sample(n=samples_to_choose)
+            ith_train_samples = train_samples.sample(n=samples_to_choose)
             self.centroids[0][tree] = ith_train_samples.mean(axis=0)  # calculating the centroid of the tree
-            self.classifiers[tree] = self._get_classifier_tree(self.features_names, ith_train_samples)
+            self.classifiers[tree] = self._get_classifier_tree(ith_train_samples)
 
 
 if __name__ == '__main__':
