@@ -43,24 +43,29 @@ class ID3:
         return -pr_b * log2(pr_b) - pr_m * log2(pr_m)
 
     @staticmethod
-    def _calculate_feature_ig(feature, threshold, b_samples, m_samples, entropy):
-        size = len(b_samples) + len(m_samples)
-        b_lower = (b_samples.loc[b_samples[feature] < threshold]).shape[0]
-        m_lower = (m_samples.loc[m_samples[feature] < threshold]).shape[0]
-        b_higher = b_samples.shape[0] - b_lower
-        m_higher = m_samples.shape[0] - m_lower
-        entropy_low = ID3._get_entropy(b_lower, m_lower)
-        entropy_high = ID3._get_entropy(b_higher, m_higher)
-        info_gain_feature_lower = (b_lower + m_lower) / size * entropy_low
-        info_gain_feature_higher = (b_higher + m_higher) / size * entropy_high
-        return entropy - info_gain_feature_lower - info_gain_feature_higher
+    def _calculate_feature_ig(feature, values, m_diagnosis_numbered, b_diagnosis_numbered, side_prob, entropy):
+        f_values = values[feature].to_numpy()
+        f_idxs = f_values.argsort()
+        sorted_diagnosis = m_diagnosis_numbered[f_idxs][:, np.newaxis].repeat(len(m_diagnosis_numbered), 1)
+        left_num_of_m = np.triu(sorted_diagnosis).sum(axis=0)
+        right_num_of_m = np.tril(sorted_diagnosis).sum(axis=0)
+        sorted_diagnosis = b_diagnosis_numbered[f_idxs][:, np.newaxis].repeat(len(b_diagnosis_numbered), 1)
+        left_num_of_b = np.triu(sorted_diagnosis).sum(axis=0)
+        right_num_of_b = np.tril(sorted_diagnosis).sum(axis=0)
+        left_prob_of_m = left_num_of_m / (left_num_of_m + left_num_of_b)
+        right_prob_of_m = right_num_of_m / (right_num_of_m + right_num_of_b)
+        left_entropy = ID3._entropy(left_prob_of_m)
+        right_entropy = ID3._entropy(right_prob_of_m)
+        info_gain = entropy - left_entropy * side_prob - right_entropy * (1 - side_prob)
+        return info_gain, f_values, f_idxs
 
     @staticmethod
-    def entropy(probs):
+    def _entropy(probs):
         def log2_(x):
             z = np.zeros_like(x)
             z[x != 0] = log2(x[x != 0])
             return z
+
         entropy = -probs * log2_(probs) - (1 - probs) * log2_(1 - probs)
         entropy[probs == 0] = 0
         return entropy
@@ -82,23 +87,11 @@ class ID3:
         best_feature_threshold = 0
         side_prob = (1 + np.arange(len(m_diagnosis_numbered))) / len(m_diagnosis_numbered)
         for feature in features:
-            f_values = values[feature].to_numpy()
-            f_idxs = f_values.argsort()
-            sorted_diagnosis = m_diagnosis_numbered[f_idxs][:, np.newaxis].repeat(len(m_diagnosis_numbered), 1)
-            left_num_of_m = np.triu(sorted_diagnosis).sum(axis=0)
-            right_num_of_m = np.tril(sorted_diagnosis).sum(axis=0)
-            sorted_diagnosis = b_diagnosis_numbered[f_idxs][:, np.newaxis].repeat(len(b_diagnosis_numbered), 1)
-            left_num_of_b = np.triu(sorted_diagnosis).sum(axis=0)
-            right_num_of_b = np.tril(sorted_diagnosis).sum(axis=0)
-            left_prob_of_m = left_num_of_m / (left_num_of_m + left_num_of_b)
-            right_prob_of_m = right_num_of_m / (right_num_of_m + right_num_of_b)
-            left_entropy = ID3.entropy(left_prob_of_m)
-            right_entropy = ID3.entropy(right_prob_of_m)
-            info_gain = entropy - left_entropy * side_prob - right_entropy * (1 - side_prob)
+            info_gain, f_values, f_idxs = ID3._calculate_feature_ig(feature, values, m_diagnosis_numbered,
+                                                                    b_diagnosis_numbered, side_prob, entropy)
             max_feat_info_gain = info_gain.max()
             max_idx = info_gain.argmax()
             threshold = f_values[f_idxs][max_idx:max_idx + 2].mean()
-            # print(info_gain)
             if best_info_gain <= max_feat_info_gain:
                 best_info_gain = max_feat_info_gain
                 best_feature = feature
@@ -123,32 +116,6 @@ class ID3:
         if n_default_samples == values \
                 or features.shape[0] == 0 \
                 or number_m_samples < min_samples:
-            node = Tree(None, None, None)
-            node.classification = default
-            return node
-
-        best_feature, threshold = self._max_feature(features, samples)
-        left = samples.loc[samples[best_feature] < threshold]
-        right = samples.loc[samples[best_feature] >= threshold]  # if == threshold, we go right
-        children = (self._get_classifier_tree(left, min_samples),
-                    self._get_classifier_tree(right, min_samples))
-        return Tree(best_feature, threshold, children)
-
-    def _get_classifier_tree2(self, samples, min_samples=1):
-        """
-        :param min_samples:
-        :param features: the keys from the .csv (first row).
-        :param samples: the keys' samples from the .csv (from the second row and on).
-        :rtype: classifierTree, a classifying tree based on the features and samples.
-        """
-        features = self.features_names
-        values = samples.shape[0]
-        m_samples = (samples.loc[samples['diagnosis'] == 'M']).shape[0]
-        default = 'B' if (samples.loc[samples['diagnosis'] == 'B']).shape[0] >= samples.shape[0] / 2 else 'M'
-
-        if (samples.loc[samples['diagnosis'] == default]).shape[0] == values \
-                or features.shape[0] == 0 \
-                or m_samples < min_samples:
             node = Tree(None, None, None)
             node.classification = default
             return node
@@ -253,7 +220,6 @@ class ID3:
 
 if __name__ == '__main__':
     id3_alg = ID3()
-    t = time()
     id3_alg.fit()
     # id3_alg.experiment(predict_or_loss='loss', print_graph=True)
     # exit(0)
@@ -261,5 +227,3 @@ if __name__ == '__main__':
     accuracy = id3_alg.accuracy(res_predictions)
     print(accuracy)
     # print(id3_alg.loss(res_predictions))
-    print(time() - t)
-

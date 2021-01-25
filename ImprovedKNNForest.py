@@ -1,4 +1,5 @@
 from KNNForest import *
+import pandas as pd
 
 
 class ImprovedKNNDecisionTree(KNNDecisionTree):
@@ -7,78 +8,55 @@ class ImprovedKNNDecisionTree(KNNDecisionTree):
     def __init__(self, N, K, P=0.35):
         KNNDecisionTree.__init__(self, N, K, P)  # initializing train and test CSVs.
 
-    def _predict_single(self, sample_to_classify):
+    @staticmethod
+    def _max_feature(features, values: pd.DataFrame):
+        """
+        Finds the feature that maximizes the information-gain, and the best threshold for that feature.
+        :param features: list, List containing the feature IDs (from the .csv).
+        :param values: list, List containing the values of each subject and feature (from the .csv).
+        :returns: string and int, feature and threshold.
+        """
+        b_samples, m_samples = values.loc[values['diagnosis'] == 'B'], values.loc[values['diagnosis'] == 'M']
+        m_diagnosis_numbered = (values['diagnosis'] == "M").to_numpy() * 1.0
+        b_diagnosis_numbered = 1 - m_diagnosis_numbered
+        entropy = ID3._get_entropy(b_samples.shape[0], m_samples.shape[0])
+        best_feature = None
+        best_info_gain = float('-inf')
+        best_feature_threshold = 0
+        side_prob = (1 + np.arange(len(m_diagnosis_numbered))) / len(m_diagnosis_numbered)
+        for feature in features:
+            info_gain, f_values, f_idxs = ID3._calculate_feature_ig(feature, values, m_diagnosis_numbered,
+                                                                    b_diagnosis_numbered, side_prob, entropy)
+            max_feat_info_gain = info_gain.max()
+            max_idx = info_gain.argmax()
+            threshold = f_values[f_idxs][max_idx:max_idx + 2].mean()
+            if best_info_gain <= max_feat_info_gain:
+                best_info_gain = max_feat_info_gain
+                best_feature = feature
+                best_feature_threshold = threshold
+
+        return best_feature, best_feature_threshold
+
+    def _predict_single2(self, sample_to_classify, sorted_centroid_idxs):
         """
         This method classifies a single sample according to the K-nearest centroids.
         :param sample_to_classify: the samples to classify
         :return: a prediction of 'M' or 'B'.
         """
-        spatial.distance.cdist
-
         distances = [(spatial.distance.euclidean(sample_to_classify, centroid), idx)  # (distance, index)
                      for idx, centroid in enumerate(self.centroids[0])]
         # distances is an array of the euclidean distances from the centroids
-        k_nearest = sorted(distances)[:self.K]  # list of (distance, index). tuple sort.
+        sorted_distances = sorted(distances)[:self.K]  # list of (distance, index). tuple sort.
+
+        weights = [1 / (dist[0] ** 2) for dist in sorted_distances]  # weights only vector
+        weights = [weight / sum(weights) for weight in weights]  # normalized weights vector
         k_trees_diagnosis = []
-        for _, ind in k_nearest:
-            k_trees_diagnosis.append(KNNDecisionTree._classify(sample_to_classify, self.classifiers[ind]))
-        return max(k_trees_diagnosis, key=k_trees_diagnosis.count)  # we classify according to the Majority Class.
-
-        # prediction = max(k_trees_diagnosis, key=k_trees_diagnosis.count)  # we classify according to what we have more.
-        # prediction = np.sum(k_trees_diagnosis) > 0.5
-        # return 'M' if prediction else 'B'
-        # weights = [1 / dist[0] for dist in k_nearest]  # weights only vector
-        # weights = [weight / sum(weights) for weight in weights]  # normalized weights vector
-        # k_trees_diagnosis = []
-        # for (_, ind), weight in zip(k_nearest, weights):
-        #     classification = KNNDecisionTree._classify(sample_to_classify, self.classifiers[ind])  # 'M', 'B'
-        #     classification = (classification == 'M') * 1.0
-        #     k_trees_diagnosis.append(classification * weight)
-        # prediction = np.sum(k_trees_diagnosis) > 0.5
-        # return 'M' if prediction else 'B'
-
-
-def knn_experiment(print_graph=False):
-    best_avg_acc = 0
-    best_N = 0
-    best_K = 0
-    best_p = 0
-    p_vals = [0.3, 0.4, 0.5, 0.6, 0.7]
-    ks = [3, 5, 7, 11]
-    ns = np.linspace(max(ks), max(ks) * 10, 10, dtype=int)
-    for K in ks:  # we check every even N from 10 to 30, just so it won't run for ages.
-        for N in ns:
-            test_acc = []
-            for p in p_vals:  # we also try to check the p parameter
-                avg_acc = 0
-                cum_acc = 0
-                experiment_knn = ImprovedKNNDecisionTree(N=N, K=K, P=p)
-                kf = KFold(n_splits=5, shuffle=True, random_state=208501684)
-                for fold_id, (train_index, test_index) in enumerate(kf.split(experiment_knn.train_samples)):
-                    acc = 0
-                    train_samples = experiment_knn.train_samples.loc[train_index]
-                    test_samples = experiment_knn.train_samples.loc[test_index]
-                    experiment_knn.fit(train_samples, train_samples.shape[0] - 1)  # creating trees
-                    predictions = experiment_knn.predict(test_samples)
-                    acc = experiment_knn.accuracy(predictions, test_samples)
-                    # print(f'N = {N}, K = {K}, p = {p}, Fold = {fold_id} Accuracy = {acc}')
-                    cum_acc += acc
-                avg_acc = cum_acc / 5
-                print(f'N = {N}, K = {K}, p = {p}, acg_acc = {avg_acc}')
-                test_acc.append(avg_acc)
-                if avg_acc >= best_avg_acc:
-                    best_avg_acc = avg_acc
-                    best_N = N
-                    best_K = K
-                    best_p = p
-            if print_graph:
-                plt.scatter(p_vals, test_acc)
-                plt.xlabel('p')
-                plt.ylabel('Accuracy')
-                plt.title(f'N = {N}, K = {K}')
-                plt.show()
-
-    print(f'Best values are: N = {best_N}, K = {best_K}, p = {best_p} with avg_acc = {best_avg_acc}')
+        for (_, ind), weight in zip(sorted_distances, weights):
+            classification = KNNDecisionTree._classify(sample_to_classify, self.classifiers[ind])  # 'M', 'B'
+            classification = (classification == 'M') * 1.0
+            k_trees_diagnosis.append(classification * weight)
+        prediction = np.sum(k_trees_diagnosis) > 0.5
+        return 'M' if prediction else 'B'
 
 
 if __name__ == '__main__':
@@ -105,14 +83,11 @@ if __name__ == '__main__':
         print('average accuracy of p =', p, ' is', avg_acc)
     print('highest average accuracy:', highest_avg_acc, ' p:', best_p)
     """
-    knn_experiment(True)
-    exit(0)
-    improved_knn = ImprovedKNNDecisionTree(N=10, K=7)
-    avg_acc = 0
-    for i in range(2):
+    t = time()
+    knn_experiment(print_graph=True)
+    for i in range(10):
+        improved_knn = ImprovedKNNDecisionTree(N=67, K=7, P=0.6555555555555554)
         improved_knn.fit()
-    res_predictions = improved_knn.predict()
-    accuracy = improved_knn.accuracy(res_predictions)
-    print(i + 1, 'th iteration accuracy:', accuracy)
-    avg_acc += accuracy
-    print('avg acc', avg_acc / 10)
+        res_predictions = improved_knn.predict()
+        accuracy = improved_knn.accuracy(res_predictions)
+        print(accuracy)
