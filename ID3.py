@@ -11,11 +11,11 @@ class Tree:
     This class represents a classifier tree to be used in the algorithms.
     """
 
-    def __init__(self, feature, threshold, children):
+    def __init__(self, feature, threshold, children, classification=None):
         self.feature = feature  # The feature to split by
         self.threshold = threshold
         self.children = children  # Decision tree branches.
-        self.classification = None
+        self.classification = classification
 
 
 class ID3:
@@ -99,14 +99,15 @@ class ID3:
 
         return best_feature, best_feature_threshold
 
-    def _get_classifier_tree(self, samples, min_samples=1):
+    def _get_classifier_tree(self, samples, min_samples=1, features=None):
         """
         :param min_samples:
         :param features: the keys from the .csv (first row).
         :param samples: the keys' samples from the .csv (from the second row and on).
         :rtype: classifierTree, a classifying tree based on the features and samples.
         """
-        features = self.features_names
+        if features is None:
+            features = self.features_names
         values = samples.shape[0]
         m_samples = samples.loc[samples['diagnosis'] == 'M']
         number_m_samples = m_samples.shape[0]
@@ -116,13 +117,14 @@ class ID3:
         if n_default_samples == values \
                 or features.shape[0] == 0 \
                 or number_m_samples < min_samples:
-            node = Tree(None, None, None)
-            node.classification = default
-            return node
+            return Tree(None, None, None, default)
 
         best_feature, threshold = self._max_feature(features, samples)
         left = samples.loc[samples[best_feature] < threshold]
         right = samples.loc[samples[best_feature] >= threshold]  # if == threshold, we go right
+        if len(left) == 0 or len(right) == 0:
+            return Tree(None, None, None, default)
+
         children = (self._get_classifier_tree(left, min_samples),
                     self._get_classifier_tree(right, min_samples))
         return Tree(best_feature, threshold, children)
@@ -206,7 +208,7 @@ class ID3:
                 # print(f"M = {val}, Fold No.: {fold_id} -> Accuracy: {acc}")
                 cum_acc += acc
             avg_acc_per_m = cum_acc / 5
-            print(f"ended {val} M value. Avg accuracy is: {avg_acc_per_m}")
+            # print(f"ended {val} M value. Avg accuracy is: {avg_acc_per_m}")
             test_acc.append(avg_acc_per_m)
         if print_graph:
             plt.scatter(m_values, test_acc)
@@ -221,6 +223,7 @@ class ID3:
 if __name__ == '__main__':
     id3_alg = ID3()
     id3_alg.fit()
+    # IN ORDER TO SEE THE EXPERIMENT VALUES, TAKE DOWN THE BOTH FOLLOWING COMMENTS. IF A GRAPH IS NOT NEEDED, SEND False
     # id3_alg.experiment(predict_or_loss='loss', print_graph=True)
     # exit(0)
     res_predictions = id3_alg.predict()

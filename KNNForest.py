@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 class KNNDecisionTree(ID3):
-    def __init__(self, N, K, P=0.35):
+    def __init__(self, N=65, K=7, P=0.6555555555555554):
         ID3.__init__(self)  # initializing train and test CSVs.
         self.test_features_values = self.test_samples[self.test_samples.columns.values[1:]]
         self.size_of_train_group = self.train_samples.shape[0] - 1  # number of rows in train.csv - 1 (for features)
@@ -110,17 +110,9 @@ def knn_experiment(print_graph=False):
 
 
 if __name__ == '__main__':
-    # print('running experiment')
-    # print('done experiment\n\n')
-    N, K, P = 65, 7, 0.6555555555555554  # knn_experiment(False)
-    # print('doing tree')
-    avg_acc = 0
-    for i in range(10):
-        knn_tree = KNNDecisionTree(N=N, K=K, P=P)
-        knn_tree.fit()
-        res_predictions = knn_tree.predict()
-        accuracy = knn_tree.accuracy(res_predictions)
-        avg_acc += accuracy
-        print(accuracy)
-    print(f'average accuracy is: {avg_acc / 10}')
-    # print('done knn_forest')
+    # N, K, P = knn_experiment(False) = 66, 7, 0.6555555555555554
+    knn_tree = KNNDecisionTree()
+    knn_tree.fit()
+    res_predictions = knn_tree.predict()
+    accuracy = knn_tree.accuracy(res_predictions)
+    print(accuracy)

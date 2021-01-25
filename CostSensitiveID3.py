@@ -5,8 +5,9 @@ class CostSensitiveID3(ID3):
     def __init__(self):
         ID3.__init__(self)
 
-    def _get_classifier_tree(self, samples, min_samples=1):
-        features = self.features_names
+    def _get_classifier_tree(self, samples, min_samples=1, features=None):
+        if features is None:
+            features = self.features_names
         values = samples.shape[0]
         m_samples = (samples.loc[samples['diagnosis'] == 'M']).shape[0]
         b_samples = (samples.loc[samples['diagnosis'] == 'B']).shape[0]
@@ -29,7 +30,6 @@ class CostSensitiveID3(ID3):
 
 
 if __name__ == '__main__':
-    t = time()
     cost_sensitive_id3 = CostSensitiveID3()
     # cost_sensitive_id3.experiment(predict_or_loss='loss', print_graph=True)
     # exit(0)
@@ -37,4 +37,3 @@ if __name__ == '__main__':
     res_predictions = cost_sensitive_id3.predict()
     loss = cost_sensitive_id3.loss(res_predictions)
     print(loss)
-    print(time() - t)
